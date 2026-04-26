@@ -579,6 +579,7 @@
 
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem">
         <button class="btn btn-primary" onclick="analyzeDNA()">🧬 Phân tích văn phong</button>
+        <button class="btn btn-primary" onclick="analyzeViral()" style="background:var(--green)">🔥 Phân tích viral</button>
         <button class="btn btn-ghost btn-sm" onclick="updateDNAFromResults()">🔄 Cập nhật từ kết quả thực tế</button>
         <span id="dna-last-updated" style="font-size:11px;color:var(--text3)"></span>
       </div>
@@ -586,8 +587,13 @@
       <div id="dna-status" style="font-size:12px;color:var(--text3);margin-bottom:8px"></div>
 
       <div id="dna-output" style="display:none">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:8px">DNA hiện tại:</div>
-        <div id="dna-content" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:1rem;font-size:13px;color:var(--text2);line-height:1.7;white-space:pre-wrap"></div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:8px">🧬 DNA Văn phong:</div>
+        <div id="dna-content" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:1rem;font-size:13px;color:var(--text2);line-height:1.7;white-space:pre-wrap;margin-bottom:1rem"></div>
+      </div>
+
+      <div id="viral-dna-output" style="display:none">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--green);margin-bottom:8px">🔥 Công thức Viral:</div>
+        <div id="viral-dna-content" style="background:var(--surface2);border:1px solid rgba(62,207,142,0.2);border-radius:var(--radius-sm);padding:1rem;font-size:13px;color:var(--text2);line-height:1.7;white-space:pre-wrap"></div>
       </div>
     </div>
 
@@ -791,6 +797,8 @@ let db = {
   viralSheetUrl: '',
   dna: '',
   dnaUpdated: '',
+  viralDna: '',
+  viralDnaUpdated: '',
   config: {
     tone: 'Hài hước, dí dỏm',
     length: 'Trung bình (~300 chữ)',
@@ -816,15 +824,27 @@ function shuffle(arr) {
 
 function renderDNA() {
   const out = document.getElementById('dna-output');
-  const content = document.getElementById('dna-content');
+  const dnaContent = document.getElementById('dna-content');
   const updated = document.getElementById('dna-last-updated');
+  const viralOut = document.getElementById('viral-dna-output');
+  const viralContent = document.getElementById('viral-dna-content');
   if (!out) return;
+
   if (db.dna) {
     out.style.display = 'block';
-    content.textContent = db.dna;
+    dnaContent.textContent = db.dna;
     updated.textContent = db.dnaUpdated ? `Cập nhật lần cuối: ${db.dnaUpdated}` : '';
   } else {
     out.style.display = 'none';
+  }
+
+  if (viralOut) {
+    if (db.viralDna) {
+      viralOut.style.display = 'block';
+      viralContent.textContent = db.viralDna;
+    } else {
+      viralOut.style.display = 'none';
+    }
   }
 }
 
@@ -874,6 +894,56 @@ Viết ngắn gọn, súc tích, dạng bullet points. Đây sẽ là hướng d
     renderDNA();
     status.textContent = `✅ Đã phân tích xong ${allPosts.length} bài viết!`;
     toast('DNA văn phong đã được cập nhật!');
+  } catch(e) {
+    status.textContent = '❌ Lỗi: ' + e.message;
+  }
+}
+
+async function analyzeViral() {
+  if (!db.viralPosts.length) return toast('Hãy tải bài viết viral trước!', 'error');
+  const status = document.getElementById('dna-status');
+  status.textContent = '⏳ AI đang phân tích công thức viral...';
+
+  const allViral = db.viralPosts.slice(0, 80);
+  const postsText = allViral.map((p, i) => `[${i+1}] ${p.content}`).join('\n\n');
+
+  const prompt = `Bạn là chuyên gia phân tích content viral Facebook.
+
+Dưới đây là ${allViral.length} bài viết viral (tương tác cao) trên Facebook:
+
+${postsText}
+
+Hãy phân tích và rút ra "Công thức Viral" — những yếu tố chung tạo nên sức hút của các bài này. Bao gồm:
+
+1. KIỂU HOOK MỞ ĐẦU: Các dạng câu mở đầu gây chú ý nhất (liệt kê 3-5 pattern cụ thể với ví dụ)
+2. CẤU TRÚC NỘI DUNG: Cách triển khai thường gặp (kể chuyện, list, câu hỏi, contrast...)
+3. YẾU TỐ CẢM XÚC: Loại cảm xúc được khai thác (tò mò, đồng cảm, bất ngờ, hài hước...)
+4. CÁCH KẾT BÀI: Các dạng kết thúc kéo tương tác (câu hỏi, CTA, cliffhanger...)
+5. ĐỘ DÀI & ĐỊNH DẠNG: Độ dài lý tưởng, cách xuống hàng, dùng emoji
+6. CHỦ ĐỀ VIRAL NHẤT: Top chủ đề được tương tác cao nhất
+
+Viết ngắn gọn, cụ thể, có ví dụ thực tế từ các bài trên. Đây là hướng dẫn để AI viết bài viral.`;
+
+  try {
+    const res = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1200,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const viralDna = data.content?.[0]?.text || '';
+    if (!viralDna) throw new Error('Không thể phân tích');
+
+    db.viralDna = viralDna;
+    db.viralDnaUpdated = new Date().toLocaleString('vi');
+    saveDB();
+    renderDNA();
+    status.textContent = `✅ Đã phân tích xong ${allViral.length} bài viral!`;
+    toast('Công thức viral đã được cập nhật!');
   } catch(e) {
     status.textContent = '❌ Lỗi: ' + e.message;
   }
@@ -1173,10 +1243,12 @@ async function generatePost() {
       ? `\n\nBÀI VIẾT MẪU CỦA TÔI (học văn phong):\n${shuffle(db.myPosts).slice(0,10).map(p => `---\nNội dung: ${p.content}${p.context ? `\nNgữ cảnh: ${p.context}` : ''}`).join('\n')}`
       : '';
 
-  // Viral: pick random 5 each time for variety
-  const viralCtx = db.viralPosts.length
-    ? `\n\nBÀI VIRAL THAM KHẢO (học cấu trúc viral):\n${shuffle(db.viralPosts).slice(0,5).map(p => `---\n${p.content}`).join('\n')}`
-    : '';
+  // Viral: use formula if available, else random samples
+  const viralCtx = db.viralDna
+    ? `\n\nCÔNG THỨC VIRAL (đã được AI phân tích từ ${db.viralPosts.length} bài):\n${db.viralDna}`
+    : db.viralPosts.length
+      ? `\n\nBÀI VIRAL THAM KHẢO (học cấu trúc viral):\n${shuffle(db.viralPosts).slice(0,5).map(p => `---\n${p.content}`).join('\n')}`
+      : '';
 
   // Feedback loop context: top performing posts from dashboard
   const publishedPosts = db.posts.filter(p => p.status !== 'pending' && (p.likes + p.comments) > 0);
