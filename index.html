@@ -817,7 +817,6 @@ async function loadSheet() {
   const status = document.getElementById('sheet-status');
   status.textContent = '⏳ Đang tải dữ liệu...';
 
-  // Extract sheet ID
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (!match) { status.textContent = '❌ Link không hợp lệ'; return; }
   const sheetId = match[1];
@@ -830,15 +829,18 @@ async function loadSheet() {
     const rows = parseCSV(text);
     if (rows.length < 2) throw new Error('Sheet trống hoặc không đúng định dạng.');
 
-    // Skip header row, parse data
-    const posts = rows.slice(1).filter(r => r[0] && r[0].trim()).map(r => ({
-      id: Date.now() + Math.random(),
-      content: (r[0] || '').trim(),
-      image: (r[1] || '').trim(),
-      context: (r[2] || '').trim(),
-      date: new Date().toLocaleDateString('vi')
-    }));
+    // Skip header, col A = content, col B = image (skipped, embedded), col C = context
+    const posts = rows.slice(1)
+      .filter(r => r[0] && r[0].trim().length > 10)
+      .map(r => ({
+        id: Date.now() + Math.random(),
+        content: (r[0] || '').trim(),
+        image: '',
+        context: (r[2] || '').trim(),
+        date: new Date().toLocaleDateString('vi')
+      }));
 
+    if (!posts.length) throw new Error('Không tìm thấy bài viết hợp lệ trong Sheet.');
     db.myPosts = posts;
     db.sheetUrl = url;
     saveDB();
@@ -852,24 +854,27 @@ async function loadSheet() {
 }
 
 function parseCSV(text) {
+  // Proper RFC 4180 CSV parser — handles multiline fields in quotes
   const rows = [];
-  const lines = text.split('\n');
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const cols = [];
-    let cur = '', inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuote && line[i+1] === '"') { cur += '"'; i++; }
-        else inQuote = !inQuote;
-      } else if (ch === ',' && !inQuote) {
-        cols.push(cur); cur = '';
-      } else cur += ch;
+  let cur = '', inQuote = false, cols = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i+1];
+    if (ch === '"') {
+      if (inQuote && next === '"') { cur += '"'; i++; }
+      else inQuote = !inQuote;
+    } else if (ch === ',' && !inQuote) {
+      cols.push(cur); cur = '';
+    } else if ((ch === '\r' || ch === '\n') && !inQuote) {
+      if (ch === '\r' && next === '\n') i++;
+      cols.push(cur); cur = '';
+      if (cols.some(c => c.trim())) rows.push(cols);
+      cols = [];
+    } else {
+      cur += ch;
     }
-    cols.push(cur);
-    rows.push(cols);
   }
+  if (cur || cols.length) { cols.push(cur); if (cols.some(c => c.trim())) rows.push(cols); }
   return rows;
 }
 
@@ -886,7 +891,6 @@ function renderMyPosts() {
   }
   el.innerHTML = db.myPosts.map((p, i) => `
     <div class="post-item">
-      ${p.image ? `<img src="${escHtml(p.image)}" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;margin-bottom:8px" onerror="this.style.display='none'">` : ''}
       <div class="post-item-text">${escHtml(p.content)}</div>
       ${p.context ? `<div style="font-size:11px;color:var(--accent2);margin-top:4px">📌 ${escHtml(p.context)}</div>` : ''}
       <div class="post-item-footer">
