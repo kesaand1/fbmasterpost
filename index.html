@@ -568,6 +568,29 @@
       </div>
     </div>
 
+
+    <!-- DNA Card -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-title">
+        <div class="card-title-icon" style="background:var(--accent-bg)">🧬</div>
+        DNA Văn phong
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;line-height:1.6">AI đọc toàn bộ bài viết của bạn và rút ra "DNA văn phong" — phong cách viết, cách dùng emoji, kiểu hook, cấu trúc câu. Lưu lại để dùng mỗi khi tạo bài mới. Nên chạy lại sau khi thêm bài mới hoặc có nhiều bài đã đăng trong Dashboard.</p>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem">
+        <button class="btn btn-primary" onclick="analyzeDNA()">🧬 Phân tích văn phong</button>
+        <button class="btn btn-ghost btn-sm" onclick="updateDNAFromResults()">🔄 Cập nhật từ kết quả thực tế</button>
+        <span id="dna-last-updated" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+
+      <div id="dna-status" style="font-size:12px;color:var(--text3);margin-bottom:8px"></div>
+
+      <div id="dna-output" style="display:none">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:8px">DNA hiện tại:</div>
+        <div id="dna-content" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:1rem;font-size:13px;color:var(--text2);line-height:1.7;white-space:pre-wrap"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- ===== WRITE PAGE ===== -->
@@ -766,6 +789,8 @@ let db = {
   viralPosts: [],
   sheetUrl: '',
   viralSheetUrl: '',
+  dna: '',
+  dnaUpdated: '',
   config: {
     tone: 'Hài hước, dí dỏm',
     length: 'Trung bình (~300 chữ)',
@@ -778,6 +803,130 @@ let db = {
   posts: [],
   sheetsUrl: ''
 };
+
+// ===== HELPERS =====
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function renderDNA() {
+  const out = document.getElementById('dna-output');
+  const content = document.getElementById('dna-content');
+  const updated = document.getElementById('dna-last-updated');
+  if (!out) return;
+  if (db.dna) {
+    out.style.display = 'block';
+    content.textContent = db.dna;
+    updated.textContent = db.dnaUpdated ? `Cập nhật lần cuối: ${db.dnaUpdated}` : '';
+  } else {
+    out.style.display = 'none';
+  }
+}
+
+async function analyzeDNA() {
+  if (!db.myPosts.length) return toast('Hãy tải bài viết của bạn trước!', 'error');
+  const status = document.getElementById('dna-status');
+  status.textContent = '⏳ AI đang đọc toàn bộ bài viết và phân tích văn phong...';
+
+  // Send ALL posts (up to 50) for comprehensive analysis
+  const allPosts = db.myPosts.slice(0, 50);
+  const postsText = allPosts.map((p, i) => `[${i+1}] ${p.content}${p.context ? ` (Ngữ cảnh: ${p.context})` : ''}`).join('\n\n');
+
+  const prompt = `Bạn là chuyên gia phân tích phong cách viết lách.
+
+Dưới đây là ${allPosts.length} bài viết Facebook của một người dùng:
+
+${postsText}
+
+Hãy phân tích và rút ra "DNA văn phong" — mô tả chi tiết, cụ thể phong cách viết của người này để một AI khác có thể bắt chước chính xác. Bao gồm:
+
+1. PHONG CÁCH TỔNG QUAN: Tone giọng, cảm xúc chủ đạo, mức độ hài hước
+2. CẤU TRÚC BÀI VIẾT: Cách mở đầu (hook), cách triển khai, cách kết
+3. NGÔN NGỮ & TỪ NGỮ: Từ hay dùng, cách xưng hô, cách dùng tiếng lóng/tiếng Anh
+4. EMOJI & ĐỊNH DẠNG: Cách dùng emoji, xuống hàng, dấu chấm lửng
+5. CHỦ ĐỀ YÊU THÍCH: Các chủ đề hay viết nhất
+6. ĐẶC ĐIỂM NỔI BẬT: Những "chữ ký" riêng biệt nhất của người này
+
+Viết ngắn gọn, súc tích, dạng bullet points. Đây sẽ là hướng dẫn cho AI viết bài mới.`;
+
+  try {
+    const res = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const dna = data.content?.[0]?.text || '';
+    if (!dna) throw new Error('Không thể phân tích');
+
+    db.dna = dna;
+    db.dnaUpdated = new Date().toLocaleString('vi');
+    saveDB();
+    renderDNA();
+    status.textContent = `✅ Đã phân tích xong ${allPosts.length} bài viết!`;
+    toast('DNA văn phong đã được cập nhật!');
+  } catch(e) {
+    status.textContent = '❌ Lỗi: ' + e.message;
+  }
+}
+
+async function updateDNAFromResults() {
+  const published = db.posts.filter(p => p.status !== 'pending' && (p.likes + p.comments) > 0);
+  if (published.length < 3) return toast('Cần ít nhất 3 bài đã đăng có số liệu tương tác!', 'error');
+  const status = document.getElementById('dna-status');
+  status.textContent = '⏳ AI đang học từ kết quả thực tế...';
+
+  const sorted = published.sort((a,b) => (b.likes+b.comments)-(a.likes+a.comments));
+  const topPosts = sorted.slice(0, 5);
+  const lowPosts = sorted.slice(-3);
+  const currentDNA = db.dna ? `\n\nDNA HIỆN TẠI:\n${db.dna}` : '';
+
+  const prompt = `Bạn là chuyên gia tối ưu nội dung Facebook.
+${currentDNA}
+
+BÀI VIẾT HIỆU QUẢ CAO (cần học nhiều hơn):
+${topPosts.map(p => `- [❤${p.likes} 💬${p.comments}] ${p.content.substring(0,200)}`).join('\n')}
+
+BÀI VIẾT HIỆU QUẢ THẤP (cần tránh):
+${lowPosts.map(p => `- [❤${p.likes} 💬${p.comments}] ${p.content.substring(0,200)}`).join('\n')}
+
+Dựa trên data thực tế này, hãy CẬP NHẬT lại DNA văn phong — nhấn mạnh hơn những yếu tố từ bài viral, giảm bớt những yếu tố từ bài thấp tương tác. Giữ cấu trúc phân tích như cũ nhưng tinh chỉnh nội dung.
+
+Chỉ trả về DNA đã cập nhật, không giải thích thêm.`;
+
+  try {
+    const res = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const dna = data.content?.[0]?.text || '';
+    if (!dna) throw new Error('Không thể cập nhật');
+
+    db.dna = dna;
+    db.dnaUpdated = new Date().toLocaleString('vi') + ' (từ kết quả thực tế)';
+    saveDB();
+    renderDNA();
+    status.textContent = `✅ DNA đã được cập nhật từ ${published.length} bài thực tế!`;
+    toast('DNA đã học từ kết quả thực tế!');
+  } catch(e) {
+    status.textContent = '❌ Lỗi: ' + e.message;
+  }
+}
 
 function loadDB() {
   try {
@@ -797,6 +946,7 @@ function renderAll() {
   loadConfig();
   renderDashboard();
   renderTopChart();
+  renderDNA();
 }
 
 // ===== TABS =====
@@ -1016,12 +1166,23 @@ async function generatePost() {
   out.className = 'ai-output loading cursor';
   out.textContent = 'AI đang sáng tác bài viết...';
 
-  const myPostsCtx = db.myPosts.length
-    ? `\n\nBÀI VIẾT MẪU CỦA TÔI (học văn phong và ngữ cảnh):\n${db.myPosts.slice(0,5).map(p => `---\nNội dung: ${p.content}${p.context ? `\nNgữ cảnh: ${p.context}` : ''}${p.image ? `\nCó hình ảnh kèm theo` : ''}`).join('\n')}`
+  // DNA context (if available, use DNA; else fallback to sample posts)
+  const myPostsCtx = db.dna
+    ? `\n\nDNA VĂN PHONG CỦA TÁC GIẢ (đã được AI phân tích):\n${db.dna}`
+    : db.myPosts.length
+      ? `\n\nBÀI VIẾT MẪU CỦA TÔI (học văn phong):\n${shuffle(db.myPosts).slice(0,10).map(p => `---\nNội dung: ${p.content}${p.context ? `\nNgữ cảnh: ${p.context}` : ''}`).join('\n')}`
+      : '';
+
+  // Viral: pick random 5 each time for variety
+  const viralCtx = db.viralPosts.length
+    ? `\n\nBÀI VIRAL THAM KHẢO (học cấu trúc viral):\n${shuffle(db.viralPosts).slice(0,5).map(p => `---\n${p.content}`).join('\n')}`
     : '';
 
-  const viralCtx = db.viralPosts.length
-    ? `\n\nBÀI VIRAL THAM KHẢO (học cách viết viral):\n${db.viralPosts.slice(0,3).map(p => `---\n${p.content}\n(❤${p.likes} 💬${p.comments} 🔁${p.shares})`).join('\n')}`
+  // Feedback loop context: top performing posts from dashboard
+  const publishedPosts = db.posts.filter(p => p.status !== 'pending' && (p.likes + p.comments) > 0);
+  const topPosts = publishedPosts.sort((a,b) => (b.likes+b.comments)-(a.likes+a.comments)).slice(0,3);
+  const feedbackCtx = topPosts.length
+    ? `\n\nBÀI TÔI ĐÃ ĐĂNG VÀ CÓ TƯƠNG TÁC CAO (học thêm từ thực tế):\n${topPosts.map(p => `---\n${p.content}\n(❤${p.likes} 💬${p.comments})`).join('\n')}`
     : '';
 
   const tone = document.getElementById('write-tone').value;
@@ -1032,6 +1193,7 @@ ${tone ? `\nTONE GIỌNG: ${tone}` : ''}
 ${notes ? `\nGHI CHÚ ĐẶC BIỆT: ${notes}` : ''}
 ${myPostsCtx}
 ${viralCtx}
+${feedbackCtx}
 
 NHIỆM VỤ:
 Viết bài Facebook về chủ đề: "${topic}"
@@ -1048,11 +1210,11 @@ YÊU CẦU:
 Chỉ trả về bài viết, không có giải thích hay chú thích thêm.`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -1087,7 +1249,7 @@ Chỉ JSON, không text khác.`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 600,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -1307,7 +1469,7 @@ Trả lời bằng tiếng Việt, súc tích, bullet points, tối đa 200 từ
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }]
       })
