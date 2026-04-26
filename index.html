@@ -539,7 +539,7 @@
           <div class="card-title-icon" style="background:var(--green-bg)">🔥</div>
           Bài viết viral mẫu
         </div>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;line-height:1.5">Nhập link Google Sheet hoặc thêm thủ công — AI học công thức viral. Sheet cần 4 cột: <strong>Nội dung</strong> · <strong>Likes</strong> · <strong>Comments</strong> · <strong>Shares</strong>.</p>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;line-height:1.5">Nhập link Google Sheet hoặc thêm thủ công — AI học công thức viral. Sheet chỉ cần <strong>1 cột: Nội dung bài viết</strong>.</p>
 
         <label>Link Google Sheet viral</label>
         <div style="display:flex;gap:6px;margin-bottom:6px">
@@ -930,15 +930,13 @@ async function loadViralSheet() {
     const rows = parseCSV(text);
     if (rows.length < 2) throw new Error('Sheet trống hoặc không đúng định dạng.');
 
-    // Col A = content, B = likes, C = comments, D = shares
+    // Chỉ dùng col A = nội dung
     const posts = rows.slice(1)
       .filter(r => r[0] && r[0].trim().length > 10)
       .map(r => ({
         id: Date.now() + Math.random(),
         content: (r[0] || '').trim(),
-        likes: parseInt((r[1] || '0').replace(/[^0-9]/g, '')) || 0,
-        comments: parseInt((r[2] || '0').replace(/[^0-9]/g, '')) || 0,
-        shares: parseInt((r[3] || '0').replace(/[^0-9]/g, '')) || 0,
+        likes: 0, comments: 0, shares: 0,
         date: new Date().toLocaleDateString('vi')
       }));
 
