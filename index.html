@@ -936,7 +936,7 @@ YÊU CẦU:
 Chỉ trả về bài viết, không có giải thích hay chú thích thêm.`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -971,7 +971,7 @@ Trả về JSON array: [{"topic":"...","hook":"..."}]
 Chỉ JSON, không text khác.`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1191,7 +1191,7 @@ NHIỆM VỤ: Phân tích ngắn gọn, cụ thể:
 Trả lời bằng tiếng Việt, súc tích, bullet points, tối đa 200 từ.`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
