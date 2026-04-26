@@ -516,21 +516,19 @@
           <div class="card-title-icon" style="background:var(--accent-bg)">🖊</div>
           Bài viết của bạn
         </div>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;line-height:1.5">Nhập những bài bạn đã đăng trên Facebook — giúp AI học văn phong của bạn.</p>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;line-height:1.5">Nhập link Google Sheet chứa bài viết cũ — AI sẽ học văn phong của bạn. Sheet cần có 3 cột: <strong>Nội dung</strong> · <strong>Hình ảnh</strong> · <strong>Mô tả ngữ cảnh</strong>.</p>
 
-        <div class="row">
-          <div class="grow">
-            <textarea id="my-post-input" rows="5" placeholder="Dán bài viết của bạn vào đây..."></textarea>
-          </div>
+        <label>Link Google Sheet</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="sheet-url-input" placeholder="https://docs.google.com/spreadsheets/d/..." style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="loadSheet()">📥 Tải</button>
         </div>
-        <div style="display:flex;gap:6px;margin-top:8px">
-          <button class="btn btn-ghost btn-sm" onclick="addMyPost()">+ Thêm bài</button>
-        </div>
+        <div id="sheet-status" style="font-size:12px;color:var(--text3);margin-top:6px"></div>
 
         <hr class="divider">
         <div class="scrollable">
           <div class="post-list" id="my-posts-list">
-            <div class="empty-state">Chưa có bài viết nào. Hãy thêm ít nhất 3 bài.</div>
+            <div class="empty-state">Chưa có bài viết nào. Nhập link Google Sheet và nhấn Tải.</div>
           </div>
         </div>
       </div>
@@ -756,6 +754,7 @@ function doGet(e) {
 let db = {
   myPosts: [],
   viralPosts: [],
+  sheetUrl: '',
   config: {
     tone: 'Hài hước, dí dỏm',
     length: 'Trung bình (~300 chữ)',
@@ -812,36 +811,89 @@ function loadConfig() {
 }
 
 // ===== MY POSTS =====
-function addMyPost() {
-  const val = document.getElementById('my-post-input').value.trim();
-  if (!val) return toast('Hãy nhập nội dung bài viết!', 'error');
-  db.myPosts.push({ id: Date.now(), content: val, date: new Date().toLocaleDateString('vi') });
-  document.getElementById('my-post-input').value = '';
-  saveDB();
-  renderMyPosts();
-  toast('Đã thêm bài viết của bạn!');
+async function loadSheet() {
+  const url = document.getElementById('sheet-url-input').value.trim();
+  if (!url) return toast('Hãy nhập link Google Sheet!', 'error');
+  const status = document.getElementById('sheet-status');
+  status.textContent = '⏳ Đang tải dữ liệu...';
+
+  // Extract sheet ID
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) { status.textContent = '❌ Link không hợp lệ'; return; }
+  const sheetId = match[1];
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+
+  try {
+    const res = await fetch(csvUrl);
+    if (!res.ok) throw new Error('Không thể tải Sheet. Hãy đảm bảo Sheet đã được share public.');
+    const text = await res.text();
+    const rows = parseCSV(text);
+    if (rows.length < 2) throw new Error('Sheet trống hoặc không đúng định dạng.');
+
+    // Skip header row, parse data
+    const posts = rows.slice(1).filter(r => r[0] && r[0].trim()).map(r => ({
+      id: Date.now() + Math.random(),
+      content: (r[0] || '').trim(),
+      image: (r[1] || '').trim(),
+      context: (r[2] || '').trim(),
+      date: new Date().toLocaleDateString('vi')
+    }));
+
+    db.myPosts = posts;
+    db.sheetUrl = url;
+    saveDB();
+    renderMyPosts();
+    status.textContent = `✅ Đã tải ${posts.length} bài viết từ Google Sheet`;
+    toast(`Đã tải ${posts.length} bài viết!`);
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+    toast(e.message, 'error');
+  }
+}
+
+function parseCSV(text) {
+  const rows = [];
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cols = [];
+    let cur = '', inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i+1] === '"') { cur += '"'; i++; }
+        else inQuote = !inQuote;
+      } else if (ch === ',' && !inQuote) {
+        cols.push(cur); cur = '';
+      } else cur += ch;
+    }
+    cols.push(cur);
+    rows.push(cols);
+  }
+  return rows;
 }
 
 function renderMyPosts() {
   const el = document.getElementById('my-posts-list');
+  // Restore sheet URL input if saved
+  if (db.sheetUrl) {
+    const inp = document.getElementById('sheet-url-input');
+    if (inp) inp.value = db.sheetUrl;
+  }
   if (!db.myPosts.length) {
-    el.innerHTML = '<div class="empty-state">Chưa có bài viết nào. Hãy thêm ít nhất 3 bài.</div>';
+    el.innerHTML = '<div class="empty-state">Chưa có bài viết nào. Nhập link Google Sheet và nhấn Tải.</div>';
     return;
   }
   el.innerHTML = db.myPosts.map((p, i) => `
     <div class="post-item">
+      ${p.image ? `<img src="${escHtml(p.image)}" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;margin-bottom:8px" onerror="this.style.display='none'">` : ''}
       <div class="post-item-text">${escHtml(p.content)}</div>
+      ${p.context ? `<div style="font-size:11px;color:var(--accent2);margin-top:4px">📌 ${escHtml(p.context)}</div>` : ''}
       <div class="post-item-footer">
         <span class="post-item-label">${p.date} · ${p.content.length} ký tự</span>
-        <button class="btn btn-danger btn-sm" onclick="removeMyPost(${i})">✕</button>
       </div>
     </div>
   `).join('');
-}
-
-function removeMyPost(i) {
-  db.myPosts.splice(i, 1);
-  saveDB(); renderMyPosts();
 }
 
 // ===== VIRAL POSTS =====
@@ -905,7 +957,7 @@ async function generatePost() {
   out.textContent = 'AI đang sáng tác bài viết...';
 
   const myPostsCtx = db.myPosts.length
-    ? `\n\nBÀI VIẾT MẪU CỦA TÔI (học văn phong):\n${db.myPosts.slice(0,3).map(p => `---\n${p.content}`).join('\n')}`
+    ? `\n\nBÀI VIẾT MẪU CỦA TÔI (học văn phong và ngữ cảnh):\n${db.myPosts.slice(0,5).map(p => `---\nNội dung: ${p.content}${p.context ? `\nNgữ cảnh: ${p.context}` : ''}${p.image ? `\nCó hình ảnh kèm theo` : ''}`).join('\n')}`
     : '';
 
   const viralCtx = db.viralPosts.length
@@ -936,11 +988,11 @@ YÊU CẦU:
 Chỉ trả về bài viết, không có giải thích hay chú thích thêm.`;
 
   try {
-    const response = await fetch('/api/claude', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -971,11 +1023,11 @@ Trả về JSON array: [{"topic":"...","hook":"..."}]
 Chỉ JSON, không text khác.`;
 
   try {
-    const res = await fetch('/api/claude', {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 600,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -1191,11 +1243,11 @@ NHIỆM VỤ: Phân tích ngắn gọn, cụ thể:
 Trả lời bằng tiếng Việt, súc tích, bullet points, tối đa 200 từ.`;
 
   try {
-    const res = await fetch('/api/claude', {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }]
       })
